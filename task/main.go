@@ -83,10 +83,18 @@ func (a *archiveLog) backup()  {
 
 	//检查/mnt/paas/kubernetes/kubelet/pods/目录下所有满足条件的文件
 	//根据满足条件的文件路径，解析出podId和这个podId对应的需要备份的所有文件列表
-
 	//路径：/mnt/paas/kubernetes/kubelet/pods/
 	//路径+：77e00ad0-7033-11ea-bfe7-000c2999f0e6/volumes/kubernetes.io~empty-dir/app-logs
 	//文件名：icore-service-uaa-7484d8d4d8-5zr7f.2020-03-12.0.log
+	//根据env和podId找restApiUrl获取namespace，deploy，rs，pod名称
+	//在备份目标路径上创建目录：/env/namespace/deploy/rs/pod/
+	//将备份文件拷贝到目标路径的新建目录上
+	//删除本地的文件
+	//如果有错，写报错日志到文件中
+
+	//定义一个备份结果数组，用于在log文件中打印信息
+	var backupResult []string
+
 	_ = filepath.Walk(a.podBaseDir,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -102,7 +110,6 @@ func (a *archiveLog) backup()  {
 
 				//检查文件是否需要备份
 				if utils.IsNeedBackup(fileName,a.checkExpired) {
-					log.Printf("发现满足备份条件的文件: %v\n",path)
 					//获取该文件的备份路径
 					//根据path获取podID
 					podId := utils.FetchPodIdByPath(a.podBaseDir, path)
@@ -132,17 +139,20 @@ func (a *archiveLog) backup()  {
 						log.Printf("执行备份报错: %v\n",err)
 						return err
 					}
-					log.Printf("执行备份：%v 成功！\n",path)
+					backupResult = append(backupResult,path)
 				}
 			}
 			return nil
 		})
-
-	//根据env和podId找restApiUrl获取namespace，deploy，rs，pod名称
-	//在备份目标路径上创建目录：/env/namespace/deploy/rs/pod/
-	//将备份文件拷贝到目标路径的新建目录上
-	//删除本地的文件
-	//如果有错，写报错日志到文件中
+	//输出备份结果信息到log文件中
+	if len(backupResult) == 0 {
+		log.Println("本次任务，没有找到符合备份条件的文件！")
+	} else {
+		log.Printf("备份了%v个符合条件的文件:\n",len(backupResult))
+		for _,v := range backupResult {
+			log.Println(v)
+		}
+	}
 
 }
 
