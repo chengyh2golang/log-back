@@ -17,7 +17,7 @@ var (
 	env string //"env6"
 	podBaseDir string // "/mnt/paas/kubernetes/kubelet/pods/"
 	backupDestBaseDir string // "/tmp/pods/"
-	restApiUrl string // "http://192.168.250.22:32598/online/podmetadata"
+	restApiUrl string // "http://192.168.250.22:32598"
 	expired int // 1
 	logDestDir  string // "/tmp/backup-task-log"
 )
@@ -27,8 +27,9 @@ func init()  {
 	flag.StringVar(&env, "env", "env6","pod's env")
 	flag.StringVar(&podBaseDir, "src", "/mnt/paas/kubernetes/kubelet/pods/","pod's home directory")
 	flag.StringVar(&backupDestBaseDir, "dst", "/tmp/pods/","backup destination directory")
-	flag.StringVar(&restApiUrl, "url", "http://192.168.250.22:32598/online/podmetadata","url which query pod's metadata")
-	flag.IntVar(&expired, "expired", 1,"expired time, day")
+	//flag.StringVar(&restApiUrl, "url", "http://192.32.14.181:30954/","url which query pod's metadata")
+	flag.StringVar(&restApiUrl, "url", "http://192.168.250.22:32598/","url which query pod's metadata")
+	flag.IntVar(&expired, "expired", 7,"expired time, day")
 	flag.StringVar(&logDestDir, "log", "/tmp/backup-task-log","log file directory")
 	flag.Usage = usage
 }
@@ -106,7 +107,8 @@ func (a *archiveLog) backup()  {
 
 			if !info.IsDir() &&
 				strings.Contains(path,defs.EmptyDirName) &&
-				strings.Contains(fileName,".20") {
+				strings.Contains(fileName,".20") &&
+				utils.CheckEndWithDotLog(path) {
 
 				//检查文件是否需要备份
 				if utils.IsNeedBackup(fileName,a.checkExpired) {
@@ -117,7 +119,7 @@ func (a *archiveLog) backup()  {
 					//根据env,podId,restApiUrl,backupDestBaseDir获取备份目标路径
 					destPath, err := utils.FetchDestPathByEnvAndPodId(a.env, podId, a.restApiUrl, a.backupDestDir)
 					if err != nil {
-						log.Printf("通过env: %v和pod_id: %v调用api: %v获取信息失败：%v\n",a.env,podId,a.restApiUrl,err)
+						log.Printf("通过env: %v和pod_id: %v调用api: %v 获取信息失败：%v\n",a.env,podId,a.restApiUrl+defs.UrlSuffix,err)
 						return err
 					}
 					//检查destPath是否存在，如果不存在就创建
@@ -134,16 +136,26 @@ func (a *archiveLog) backup()  {
 						}
 					}
 					//备份文件
-					err = os.Rename(path, utils.PathWrapper(destPath)+fileName)
+					//err = os.Rename(path, utils.PathWrapper(destPath)+fileName)
+					//使用copy方法备份文件
+					_, err = utils.CopyFile(path, utils.PathWrapper(destPath)+fileName)
 					if err != nil {
 						log.Printf("执行备份报错: %v\n",err)
 						return err
 					}
+					//copy到nfs完成后，删除本地的文件
+					err = os.Remove(path)
+					if err != nil {
+						log.Printf("删除节点的过期文件报错: %v\n",err)
+						return err
+					}
+
 					backupResult = append(backupResult,path)
 				}
 			}
 			return nil
 		})
+
 	//输出备份结果信息到log文件中
 	if len(backupResult) == 0 {
 		log.Println("本次任务，没有找到符合备份条件的文件！")
@@ -175,6 +187,7 @@ func main() {
 		podBaseDir = utils.PathWrapper(podBaseDir)
 		backupDestBaseDir = utils.PathWrapper(backupDestBaseDir)
 		logDestDir = utils.PathWrapper(logDestDir)
+		restApiUrl = utils.PathWrapper(restApiUrl)
 		a := newArchiveLog(env,podBaseDir,backupDestBaseDir,expired,restApiUrl,logDestDir)
 		a.backup()
 	}

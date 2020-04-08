@@ -8,6 +8,7 @@ const (
 	//Expired = 1
 	//LogDestDir = "/tmp/log-back"
 	EmptyDirName = "kubernetes.io~empty-dir"
+	UrlSuffix= "online/podmetadata"
 )
 
 type PodInfo struct {
